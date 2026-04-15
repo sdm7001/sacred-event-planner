@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 38 45% 97%;
+    --foreground: 0 0% 17%;
+    --card: 36 38% 96%;
+    --card-foreground: 0 0% 17%;
+    --popover: 36 38% 96%;
+    --popover-foreground: 0 0% 17%;
+    --primary: 95 13% 49%;
+    --primary-foreground: 38 45% 97%;
+    --secondary: 33 25% 90%;
+    --secondary-foreground: 0 0% 17%;
+    --muted: 33 20% 93%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 33 25% 90%;
+    --accent-foreground: 0 0% 17%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 33 15% 85%;
+    --input: 33 15% 85%;
+    --ring: 95 13% 49%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 0 0% 10%;
+    --foreground: 33 25% 92%;
+    --card: 0 0% 13%;
+    --card-foreground: 33 25% 92%;
+    --popover: 0 0% 13%;
+    --popover-foreground: 33 25% 92%;
+    --primary: 95 20% 55%;
+    --primary-foreground: 0 0% 10%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 33 25% 92%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 33 15% 60%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 33 25% 92%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 22%;
+    --input: 0 0% 22%;
+    --ring: 95 20% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/30 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/50;
+}
+
+/* Focus styles */
+.focus-ring {
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+}
