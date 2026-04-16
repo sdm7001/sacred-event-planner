@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -166,9 +166,8 @@ export default function AuditLogsPage() {
               </TableHeader>
               <TableBody>
                 {filtered.map((log) => (
-                  <>
+                  <Fragment key={log.id}>
                     <TableRow
-                      key={log.id}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => setExpanded(expanded === log.id ? null : log.id)}
                     >
@@ -226,7 +225,7 @@ export default function AuditLogsPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

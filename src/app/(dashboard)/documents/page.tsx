@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FileText, Upload, Search, Download, Trash2, Eye, Loader2, AlertCircle } from "lucide-react";
-import { uploadDocument, deleteDocument } from "@/app/actions/documents";
+import { uploadDocument, deleteDocument, listDocuments } from "@/app/actions/documents";
 
 interface Document {
   id: string;
@@ -23,17 +23,10 @@ interface Document {
   size_display?: string;
 }
 
-const MOCK_DOCUMENTS: Document[] = [
-  { id: "1", filename: "Liability Waiver - Spring 2026.pdf", storage_url: "#", linked_entity_type: "waiver", uploaded_at: "2026-03-01T00:00:00", events: { title: "Spring Equinox Retreat" } },
-  { id: "2", filename: "Venue Contract - Sacred Valley.pdf", storage_url: "#", linked_entity_type: "contract", uploaded_at: "2026-02-15T00:00:00", events: { title: "Spring Equinox Retreat" } },
-  { id: "3", filename: "Emergency Protocol v3.pdf", storage_url: "#", linked_entity_type: "protocol", uploaded_at: "2026-02-20T00:00:00", events: null },
-  { id: "4", filename: "Insurance Certificate 2026.pdf", storage_url: "#", linked_entity_type: "insurance", uploaded_at: "2026-01-10T00:00:00", events: null },
-];
-
 const DOC_TYPES = ["waiver", "contract", "protocol", "insurance", "other"];
 
 export default function DocumentsPage() {
-  const [documents, setDocuments] = useState<Document[]>(MOCK_DOCUMENTS);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [search, setSearch] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -41,6 +34,13 @@ export default function DocumentsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    startTransition(async () => {
+      const result = await listDocuments();
+      if (!result.error) setDocuments(result.documents as Document[]);
+    });
+  }, []);
 
   const filtered = documents.filter(
     (d) =>
@@ -84,9 +84,10 @@ export default function DocumentsPage() {
   const handleDelete = (doc: Document) => {
     if (!confirm(`Delete "${doc.filename}"? This cannot be undone.`)) return;
     startTransition(async () => {
-      // Extract storage path from URL (everything after the bucket name)
-      const pathMatch = doc.storage_url.match(/\/documents\/(.+)$/);
-      const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : "";
+      // Extract storage path from URL (everything after /documents/ bucket segment)
+      const urlObj = (() => { try { return new URL(doc.storage_url); } catch { return null; } })();
+      const pathSegments = urlObj?.pathname.split("/documents/") ?? [];
+      const storagePath = pathSegments.length > 1 ? decodeURIComponent(pathSegments[1]) : "";
       const result = await deleteDocument(doc.id, storagePath);
       if (result.error) {
         setActionError(result.error);

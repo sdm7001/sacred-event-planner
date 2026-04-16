@@ -149,7 +149,11 @@ export default function TasksPage() {
     const newStatus = task.status === "completed" ? "pending" : "completed";
     setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: newStatus } : t));
     startTransition(async () => {
-      await updateTask(task.id, { status: newStatus });
+      const result = await updateTask(task.id, { status: newStatus });
+      if (result.error) {
+        setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: task.status } : t));
+        setActionError(result.error);
+      }
     });
   };
 

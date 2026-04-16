@@ -19,6 +19,34 @@ export async function removeParticipants(participantIds: string[]) {
   return { success: true, count: participantIds.length };
 }
 
+export async function updateParticipant(
+  id: string,
+  updates: Partial<{
+    full_name: string;
+    preferred_name: string | null;
+    email: string;
+    phone: string | null;
+    dob: string | null;
+    emergency_contact_name: string | null;
+    emergency_contact_phone: string | null;
+    address_line1: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    notes: string | null;
+  }>
+) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("participants")
+    .update(updates)
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/participants");
+  revalidatePath(`/participants/${id}`);
+  return { success: true };
+}
+
 export async function createParticipant(formData: FormData) {
   const supabase = await createClient();
 
