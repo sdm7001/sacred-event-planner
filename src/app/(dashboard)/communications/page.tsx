@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,22 +10,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Send, Search, Clock, CheckCircle2, XCircle } from "lucide-react";
-
-const initialLogs = [
-  { id: "1", date: "Mar 10, 2026 9:15 AM", event: "Spring Equinox", subject: "Welcome & What to Expect", recipient: "18 participants", status: "delivered" },
-  { id: "2", date: "Mar 8, 2026 2:00 PM", event: "Spring Equinox", subject: "Registration Confirmation", recipient: "Sarah Johnson", status: "delivered" },
-  { id: "3", date: "Mar 8, 2026 1:45 PM", event: "Spring Equinox", subject: "Registration Confirmation", recipient: "Michael Rivera", status: "delivered" },
-  { id: "4", date: "Mar 7, 2026 10:00 AM", event: "Spring Equinox", subject: "Provider Schedule", recipient: "River Stone", status: "delivered" },
-  { id: "5", date: "Mar 5, 2026 3:00 PM", event: "Spring Equinox", subject: "Invitation to Spring Equinox", recipient: "25 contacts", status: "delivered" },
-  { id: "6", date: "Mar 12, 2026 8:00 AM", event: "Spring Equinox", subject: "Prep Instructions Reminder", recipient: "18 participants", status: "pending" },
-  { id: "7", date: "Mar 3, 2026 11:30 AM", event: "New Moon", subject: "Save the Date", recipient: "12 participants", status: "failed" },
-];
+import { Send, Search, Clock, CheckCircle2, XCircle, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { listEmailJobs, createBroadcastJobs, type EmailJobRow } from "@/app/actions/communications";
 
 function StatusIcon({ status }: { status: string }) {
   switch (status) {
+    case "sent":
     case "delivered": return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-    case "sent":      return <CheckCircle2 className="h-4 w-4 text-blue-500" />;
     case "pending":   return <Clock className="h-4 w-4 text-amber-500" />;
     case "failed":    return <XCircle className="h-4 w-4 text-red-500" />;
     default:          return null;
@@ -33,39 +24,54 @@ function StatusIcon({ status }: { status: string }) {
 }
 
 export default function CommunicationsPage() {
-  const [logs, setLogs] = useState(initialLogs);
+  const [jobs, setJobs] = useState<EmailJobRow[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  const [audience, setAudience] = useState("all_participants");
+  const [audience, setAudience] = useState<"all_participants" | "all_providers" | "everyone">("all_participants");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  const filtered = logs.filter((l) => {
+  const loadJobs = () => {
+    startTransition(async () => {
+      const result = await listEmailJobs(200);
+      if (!result.error) setJobs(result.jobs);
+    });
+  };
+
+  useEffect(() => { loadJobs(); }, []);
+
+  const filtered = jobs.filter((j) => {
     const matchSearch =
-      l.subject.toLowerCase().includes(search.toLowerCase()) ||
-      l.recipient.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "all" || l.status === statusFilter;
+      (j.template_subject ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (j.event_title ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      j.recipient_type.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === "all" || j.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
   const handleSendBroadcast = () => {
     if (!subject.trim() || !body.trim()) return;
-    const audienceLabel =
-      audience === "all_participants" ? "All participants" :
-      audience === "all_providers" ? "All providers" : "Everyone";
-    const newLog = {
-      id: String(Date.now()),
-      date: new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
-      event: "Broadcast",
-      subject: subject.trim(),
-      recipient: audienceLabel,
-      status: "pending",
-    };
-    setLogs((prev) => [newLog, ...prev]);
-    setBroadcastOpen(false);
-    setSubject("");
-    setBody("");
+    setActionError(null);
+    startTransition(async () => {
+      const result = await createBroadcastJobs({ audience, subject: subject.trim(), body: body.trim() });
+      if (result.error) {
+        setActionError(result.error);
+        return;
+      }
+      setBroadcastOpen(false);
+      setSubject("");
+      setBody("");
+      loadJobs();
+    });
+  };
+
+  const stats = {
+    sent: jobs.filter((j) => j.status === "sent" || j.status === "delivered").length,
+    pending: jobs.filter((j) => j.status === "pending").length,
+    failed: jobs.filter((j) => j.status === "failed").length,
   };
 
   return (
@@ -75,21 +81,29 @@ export default function CommunicationsPage() {
           <h1 className="text-3xl font-heading font-semibold tracking-tight">Communications</h1>
           <p className="text-muted-foreground mt-1">Email log and broadcast center</p>
         </div>
-        <Button
-          className="bg-sage hover:bg-sage-dark"
-          onClick={() => { setSubject(""); setBody(""); setBroadcastOpen(true); }}
-        >
-          <Send className="mr-2 h-4 w-4" /> New Broadcast
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={loadJobs} disabled={isPending}>
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </Button>
+          <Button className="bg-sage hover:bg-sage-dark" onClick={() => { setSubject(""); setBody(""); setActionError(null); setBroadcastOpen(true); }}>
+            <Send className="mr-2 h-4 w-4" /> New Broadcast
+          </Button>
+        </div>
       </div>
+
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" /> {actionError}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         {[
-          { label: "Delivered", count: logs.filter((l) => l.status === "delivered").length, color: "" },
-          { label: "Pending", count: logs.filter((l) => l.status === "pending").length, color: "text-amber-600" },
-          { label: "Failed", count: logs.filter((l) => l.status === "failed").length, color: "text-red-600" },
-          { label: "Total Sent", count: logs.length, color: "" },
+          { label: "Sent", count: stats.sent, color: "" },
+          { label: "Pending", count: stats.pending, color: "text-amber-600" },
+          { label: "Failed", count: stats.failed, color: "text-red-600" },
+          { label: "Total", count: jobs.length, color: "" },
         ].map((s) => (
           <Card key={s.label}>
             <CardContent className="pt-6">
@@ -107,7 +121,7 @@ export default function CommunicationsPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by subject or recipient..."
+                placeholder="Search by subject, event, or recipient type..."
                 className="pl-10"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -117,7 +131,7 @@ export default function CommunicationsPage() {
               <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                <SelectItem value="delivered">Delivered</SelectItem>
+                <SelectItem value="sent">Sent</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
@@ -129,50 +143,72 @@ export default function CommunicationsPage() {
       {/* Log Table */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12"></TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Event</TableHead>
-                <TableHead>Subject</TableHead>
-                <TableHead>Recipient</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((l) => (
-                <TableRow key={l.id}>
-                  <TableCell><StatusIcon status={l.status} /></TableCell>
-                  <TableCell className="text-sm whitespace-nowrap">{l.date}</TableCell>
-                  <TableCell className="text-sm">{l.event}</TableCell>
-                  <TableCell className="font-medium">{l.subject}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{l.recipient}</TableCell>
-                  <TableCell>
-                    <Badge variant={l.status === "delivered" ? "sage" : l.status === "failed" ? "destructive" : "secondary"}>
-                      {l.status}
-                    </Badge>
-                  </TableCell>
+          {isPending && jobs.length === 0 ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10"></TableHead>
+                  <TableHead>Scheduled</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Recipient</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground text-sm">
+                      No emails found.
+                    </TableCell>
+                  </TableRow>
+                ) : filtered.map((j) => (
+                  <TableRow key={j.id}>
+                    <TableCell><StatusIcon status={j.status} /></TableCell>
+                    <TableCell className="text-sm whitespace-nowrap text-muted-foreground">
+                      {new Date(j.scheduled_for).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                    </TableCell>
+                    <TableCell className="text-sm">{j.event_title ?? "—"}</TableCell>
+                    <TableCell className="font-medium text-sm">{j.template_subject ?? "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground capitalize">{j.recipient_type}</TableCell>
+                    <TableCell>
+                      <Badge variant={
+                        j.status === "sent" || j.status === "delivered" ? "sage" :
+                        j.status === "failed" ? "destructive" : "secondary"
+                      }>
+                        {j.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
-      {/* New Broadcast Dialog */}
-      <Dialog open={broadcastOpen} onOpenChange={setBroadcastOpen}>
+      {/* Broadcast Dialog */}
+      <Dialog open={broadcastOpen} onOpenChange={(open) => { if (!isPending) setBroadcastOpen(open); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>New Broadcast</DialogTitle>
             <DialogDescription>
-              Send an email to a group of people. This will be queued and sent via Resend.
+              Send an email to a group. Jobs are queued and dispatched via Resend.
             </DialogDescription>
           </DialogHeader>
+          {actionError && (
+            <div className="flex items-center gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" /> {actionError}
+            </div>
+          )}
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label>Audience</Label>
-              <Select value={audience} onValueChange={setAudience}>
+              <Select value={audience} onValueChange={(v) => setAudience(v as typeof audience)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all_participants">All Participants</SelectItem>
@@ -183,30 +219,18 @@ export default function CommunicationsPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Subject *</Label>
-              <Input
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="e.g., Important update about your upcoming event"
-              />
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g., Important update about your upcoming event" />
             </div>
             <div className="space-y-1.5">
               <Label>Message *</Label>
-              <Textarea
-                rows={6}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Write your message here..."
-              />
+              <Textarea rows={6} value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write your message here..." />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBroadcastOpen(false)}>Cancel</Button>
-            <Button
-              className="bg-sage hover:bg-sage-dark"
-              onClick={handleSendBroadcast}
-              disabled={!subject.trim() || !body.trim()}
-            >
-              <Send className="mr-2 h-4 w-4" /> Send Broadcast
+            <Button variant="outline" onClick={() => setBroadcastOpen(false)} disabled={isPending}>Cancel</Button>
+            <Button className="bg-sage hover:bg-sage-dark" onClick={handleSendBroadcast} disabled={isPending || !subject.trim() || !body.trim()}>
+              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              Send Broadcast
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Edit, Copy, Eye, Code, Trash2, Loader2, AlertCircle } from "lucide-react";
 import {
+  listEmailTemplates,
   createEmailTemplate,
   updateEmailTemplate,
   cloneEmailTemplate,
@@ -79,6 +80,15 @@ const EMPTY_FORM = { name: "", subject: "", body_html: "", body_text: "", is_act
 
 export default function EmailTemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>(SEED_TEMPLATES);
+
+  useEffect(() => {
+    startTransition(async () => {
+      const result = await listEmailTemplates();
+      if (!result.error && result.templates.length > 0) {
+        setTemplates(result.templates as Template[]);
+      }
+    });
+  }, []);
   const [preview, setPreview] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<Template | null>(null);
   const [isNewOpen, setIsNewOpen] = useState(false);
