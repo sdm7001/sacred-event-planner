@@ -1,7 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { updateRSVP, updateWaiverStatus, sendWaiver, type RSVPStatus, type WaiverStatus } from "@/app/actions/event-participants";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -143,7 +151,46 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+type ParticipantRow = typeof participants[number] & { rsvp: RSVPStatus; waiver: WaiverStatus };
+
 export default function EventDetailPage() {
+  const [localParticipants, setLocalParticipants] = useState<ParticipantRow[]>(
+    participants as ParticipantRow[]
+  );
+  const [rsvpPending, startRsvpTransition] = useTransition();
+  const [waiverPending, startWaiverTransition] = useTransition();
+
+  const handleRsvpChange = (participantId: string, rsvp_status: RSVPStatus) => {
+    setLocalParticipants((prev) =>
+      prev.map((p) => (p.id === participantId ? { ...p, rsvp: rsvp_status } : p))
+    );
+    startRsvpTransition(async () => {
+      await updateRSVP(event.id, participantId, rsvp_status);
+    });
+  };
+
+  const handleWaiverChange = (participantId: string, waiver_status: WaiverStatus) => {
+    setLocalParticipants((prev) =>
+      prev.map((p) => (p.id === participantId ? { ...p, waiver: waiver_status } : p))
+    );
+    startWaiverTransition(async () => {
+      await updateWaiverStatus(event.id, participantId, waiver_status);
+    });
+  };
+
+  const handleSendAllWaivers = () => {
+    const notSent = localParticipants
+      .filter((p) => p.waiver === "not_sent")
+      .map((p) => p.id);
+    if (notSent.length === 0) return;
+    setLocalParticipants((prev) =>
+      prev.map((p) => (notSent.includes(p.id) ? { ...p, waiver: "sent" as WaiverStatus } : p))
+    );
+    startWaiverTransition(async () => {
+      await sendWaiver(event.id, notSent);
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -315,12 +362,25 @@ export default function EventDetailPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Participants ({participants.length})</CardTitle>
+                  <CardTitle>Participants ({localParticipants.length})</CardTitle>
                   <CardDescription>Manage attendees for this event</CardDescription>
                 </div>
-                <Button size="sm" className="bg-sage hover:bg-sage-dark">
-                  <Plus className="mr-2 h-4 w-4" /> Add Participant
-                </Button>
+                <div className="flex gap-2">
+                  {localParticipants.some((p) => p.waiver === "not_sent") && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSendAllWaivers}
+                      disabled={waiverPending}
+                    >
+                      <Mail className="mr-2 h-4 w-4" />
+                      Send Waivers ({localParticipants.filter((p) => p.waiver === "not_sent").length})
+                    </Button>
+                  )}
+                  <Button size="sm" className="bg-sage hover:bg-sage-dark">
+                    <Plus className="mr-2 h-4 w-4" /> Add Participant
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -336,7 +396,7 @@ export default function EventDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {participants.map((p) => (
+                  {localParticipants.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>
                         <Link href={`/participants/${p.id}`} className="hover:text-sage transition-colors">
@@ -344,8 +404,38 @@ export default function EventDetailPage() {
                           <p className="text-xs text-muted-foreground">{p.email}</p>
                         </Link>
                       </TableCell>
-                      <TableCell><StatusBadge status={p.rsvp} /></TableCell>
-                      <TableCell><StatusBadge status={p.waiver} /></TableCell>
+                      <TableCell>
+                        <Select
+                          value={p.rsvp}
+                          onValueChange={(v) => handleRsvpChange(p.id, v as RSVPStatus)}
+                          disabled={rsvpPending}
+                        >
+                          <SelectTrigger className="h-7 w-32 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(["invited","confirmed","tentative","declined","waitlisted"] as RSVPStatus[]).map((s) => (
+                              <SelectItem key={s} value={s} className="text-xs capitalize">{s}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={p.waiver}
+                          onValueChange={(v) => handleWaiverChange(p.id, v as WaiverStatus)}
+                          disabled={waiverPending}
+                        >
+                          <SelectTrigger className="h-7 w-28 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(["not_sent","sent","signed","expired"] as WaiverStatus[]).map((s) => (
+                              <SelectItem key={s} value={s} className="text-xs capitalize">{s.replace("_"," ")}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
                       <TableCell><StatusBadge status={p.payment} /></TableCell>
                       <TableCell><StatusBadge status={p.prep} /></TableCell>
                       <TableCell className="text-sm text-muted-foreground">{p.dietary || "---"}</TableCell>
