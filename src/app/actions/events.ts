@@ -163,6 +163,7 @@ export async function duplicateEvent(id: string) {
 
   if (fetchError || !original) return { error: "Event not found" };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { id: _id, created_at, updated_at, current_participant_count, ...eventData } = original;
 
   const { data, error } = await supabase

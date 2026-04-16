@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,19 +46,6 @@ interface Participant {
   state?: string;
 }
 
-function StatusDot({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    signed: "bg-green-500",
-    compliant: "bg-green-500",
-    sent: "bg-blue-500",
-    in_progress: "bg-amber-500",
-    not_sent: "bg-red-500",
-    not_started: "bg-gray-400",
-  };
-  return (
-    <span className={`inline-block h-2 w-2 rounded-full ${colors[status] ?? "bg-gray-400"}`} />
-  );
-}
 
 const EMPTY_FORM = { full_name: "", preferred_name: "", email: "", phone: "", city: "", state: "" };
 

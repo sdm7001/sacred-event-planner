@@ -61,6 +61,7 @@ export async function cloneEmailTemplate(id: string) {
     .single();
   if (fetchErr || !original) return { error: "Template not found" };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { id: _id, created_at, updated_at, ...rest } = original;
   const { data, error } = await supabase
     .from("email_templates")

@@ -55,7 +55,7 @@ export async function GET(request: Request) {
     if (!shouldFire) continue;
 
     // Get audience
-    let recipientIds: { id: string; type: string }[] = [];
+    const recipientIds: { id: string; type: string }[] = [];
 
     if (rule.audience_segment === "all_participants" || rule.audience_segment === "all") {
       const { data: eps } = await supabase
