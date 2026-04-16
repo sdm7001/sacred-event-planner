@@ -101,9 +101,12 @@ export default function ChecklistsPage() {
   const handleAddItem = (checklistId: string) => {
     const text = (newItemText[checklistId] ?? "").trim();
     if (!text) return;
+    setActionError(null);
     startTransition(async () => {
       const result = await addChecklistItem(checklistId, text);
-      if (!result.error) {
+      if (result.error) {
+        setActionError(result.error);
+      } else {
         setItemsByList((prev) => ({
           ...prev,
           [checklistId]: [...(prev[checklistId] ?? []), result.data as ChecklistItem],
@@ -122,7 +125,17 @@ export default function ChecklistsPage() {
       ),
     }));
     startTransition(async () => {
-      await toggleChecklistItem(itemId, !current);
+      const result = await toggleChecklistItem(itemId, !current);
+      if (result.error) {
+        // Revert optimistic update on failure
+        setItemsByList((prev) => ({
+          ...prev,
+          [checklistId]: (prev[checklistId] ?? []).map((item) =>
+            item.id === itemId ? { ...item, is_done: current } : item
+          ),
+        }));
+        setActionError(result.error);
+      }
     });
   };
 
@@ -132,7 +145,12 @@ export default function ChecklistsPage() {
       [checklistId]: (prev[checklistId] ?? []).filter((item) => item.id !== itemId),
     }));
     startTransition(async () => {
-      await deleteChecklistItem(itemId);
+      const result = await deleteChecklistItem(itemId);
+      if (result.error) {
+        // Reload items to restore deleted item on failure
+        loadItems(checklistId);
+        setActionError(result.error);
+      }
     });
   };
 

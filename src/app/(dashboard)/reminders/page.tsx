@@ -5,6 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Bell, Clock, Users, Mail, Copy, Trash2, CalendarDays } from "lucide-react";
 
 interface ReminderRule {
@@ -45,9 +49,20 @@ const initialWorkflows: Workflow[] = [
   },
 ];
 
+const EMPTY_WORKFLOW_FORM = { event: "", eventDate: "" };
+const EMPTY_RULE_FORM = { title: "", offsetDays: "3", audience: "All participants" };
+
 export default function RemindersPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>(initialWorkflows);
   const [clonedId, setClonedId] = useState<string | null>(null);
+
+  // New Workflow dialog
+  const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
+  const [workflowForm, setWorkflowForm] = useState(EMPTY_WORKFLOW_FORM);
+
+  // Add Rule dialog
+  const [addRuleTarget, setAddRuleTarget] = useState<string | null>(null);
+  const [ruleForm, setRuleForm] = useState(EMPTY_RULE_FORM);
 
   const cloneWorkflow = (wf: Workflow) => {
     const newId = `w${Date.now()}`;
@@ -60,6 +75,37 @@ export default function RemindersPage() {
     setWorkflows((prev) => [...prev, cloned]);
     setClonedId(newId);
     setTimeout(() => setClonedId(null), 3000);
+  };
+
+  const handleCreateWorkflow = () => {
+    if (!workflowForm.event.trim()) return;
+    const newWf: Workflow = {
+      id: `w${Date.now()}`,
+      event: workflowForm.event.trim(),
+      eventDate: workflowForm.eventDate || "TBD",
+      rules: [],
+    };
+    setWorkflows((prev) => [...prev, newWf]);
+    setNewWorkflowOpen(false);
+    setWorkflowForm(EMPTY_WORKFLOW_FORM);
+  };
+
+  const handleAddRule = () => {
+    if (!ruleForm.title.trim() || !addRuleTarget) return;
+    const newRule: ReminderRule = {
+      id: `r${Date.now()}`,
+      title: ruleForm.title.trim(),
+      offsetDays: Number(ruleForm.offsetDays) || 0,
+      audience: ruleForm.audience,
+      active: true,
+    };
+    setWorkflows((prev) =>
+      prev.map((wf) =>
+        wf.id === addRuleTarget ? { ...wf, rules: [...wf.rules, newRule] } : wf
+      )
+    );
+    setAddRuleTarget(null);
+    setRuleForm(EMPTY_RULE_FORM);
   };
 
   const toggleRule = (wfId: string, ruleId: string) => {
@@ -87,7 +133,7 @@ export default function RemindersPage() {
           <h1 className="text-3xl font-heading font-semibold tracking-tight">Reminder Workflows</h1>
           <p className="text-muted-foreground mt-1">Automated email reminders tied to event schedules</p>
         </div>
-        <Button className="bg-sage hover:bg-sage-dark">
+        <Button className="bg-sage hover:bg-sage-dark" onClick={() => { setWorkflowForm(EMPTY_WORKFLOW_FORM); setNewWorkflowOpen(true); }}>
           <Plus className="mr-2 h-4 w-4" /> New Workflow
         </Button>
       </div>
@@ -129,7 +175,7 @@ export default function RemindersPage() {
                 <Button variant="outline" size="sm" onClick={() => cloneWorkflow(wf)}>
                   <Copy className="mr-2 h-4 w-4" /> Clone
                 </Button>
-                <Button size="sm" className="bg-sage hover:bg-sage-dark">
+                <Button size="sm" className="bg-sage hover:bg-sage-dark" onClick={() => { setRuleForm(EMPTY_RULE_FORM); setAddRuleTarget(wf.id); }}>
                   <Plus className="mr-2 h-4 w-4" /> Add Rule
                 </Button>
               </div>
@@ -152,20 +198,98 @@ export default function RemindersPage() {
                   <Badge variant={rule.active ? "sage" : "secondary"}>
                     {rule.active ? "Active" : "Paused"}
                   </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteRule(wf.id, rule.id)}
-                  >
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => deleteRule(wf.id, rule.id)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               ))}
+              {wf.rules.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No rules yet. Add a rule to get started.</p>
+              )}
             </div>
           </CardContent>
         </Card>
       ))}
+
+      {/* New Workflow Dialog */}
+      <Dialog open={newWorkflowOpen} onOpenChange={setNewWorkflowOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New Workflow</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Event Name *</Label>
+              <Input
+                value={workflowForm.event}
+                onChange={(e) => setWorkflowForm((f) => ({ ...f, event: e.target.value }))}
+                placeholder="e.g., Summer Solstice Retreat"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Event Date</Label>
+              <Input
+                type="date"
+                value={workflowForm.eventDate}
+                onChange={(e) => setWorkflowForm((f) => ({ ...f, eventDate: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewWorkflowOpen(false)}>Cancel</Button>
+            <Button className="bg-sage hover:bg-sage-dark" onClick={handleCreateWorkflow} disabled={!workflowForm.event.trim()}>
+              <Plus className="mr-2 h-4 w-4" /> Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Rule Dialog */}
+      <Dialog open={!!addRuleTarget} onOpenChange={(open) => { if (!open) setAddRuleTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Reminder Rule</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Rule Title *</Label>
+              <Input
+                value={ruleForm.title}
+                onChange={(e) => setRuleForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder="e.g., Prep instructions reminder"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Days Before Event</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={ruleForm.offsetDays}
+                  onChange={(e) => setRuleForm((f) => ({ ...f, offsetDays: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Audience</Label>
+                <Select value={ruleForm.audience} onValueChange={(v) => setRuleForm((f) => ({ ...f, audience: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All participants">All participants</SelectItem>
+                    <SelectItem value="All providers">All providers</SelectItem>
+                    <SelectItem value="All">Everyone</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddRuleTarget(null)}>Cancel</Button>
+            <Button className="bg-sage hover:bg-sage-dark" onClick={handleAddRule} disabled={!ruleForm.title.trim()}>
+              <Plus className="mr-2 h-4 w-4" /> Add Rule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

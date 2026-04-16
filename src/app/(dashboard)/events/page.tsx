@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { deleteEvent, duplicateEvent } from "@/app/actions/events";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +24,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import {
   CalendarDays,
@@ -32,6 +43,8 @@ import {
   Copy,
   Edit,
   Trash2,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -42,78 +55,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { formatDate } from "@/lib/utils";
 
-const events = [
-  {
-    id: "1",
-    title: "Spring Equinox Retreat",
-    type: "Retreat",
-    status: "confirmed",
-    start_datetime: "2026-03-20T10:00:00",
-    end_datetime: "2026-03-22T16:00:00",
-    location: "Sacred Valley Ranch",
-    participants: 18,
-    capacity: 20,
-    coordinator: "Maya Chen",
-    readiness: 82,
-    tags: ["equinox", "multi-day"],
-  },
-  {
-    id: "2",
-    title: "New Moon Ceremony",
-    type: "Ceremony",
-    status: "scheduled",
-    start_datetime: "2026-03-29T18:00:00",
-    end_datetime: "2026-03-29T23:00:00",
-    location: "Riverside Temple",
-    participants: 12,
-    capacity: 15,
-    coordinator: "Maya Chen",
-    readiness: 65,
-    tags: ["moon", "evening"],
-  },
-  {
-    id: "3",
-    title: "Summer Solstice Gathering",
-    type: "Festival",
-    status: "draft",
-    start_datetime: "2026-06-20T08:00:00",
-    end_datetime: "2026-06-21T20:00:00",
-    location: "Hilltop Meadow",
-    participants: 0,
-    capacity: 30,
-    coordinator: "River Stone",
-    readiness: 15,
-    tags: ["solstice", "outdoor"],
-  },
-  {
-    id: "4",
-    title: "Full Moon Fire Circle",
-    type: "Ceremony",
-    status: "completed",
-    start_datetime: "2026-02-12T19:00:00",
-    end_datetime: "2026-02-12T23:00:00",
-    location: "Riverside Temple",
-    participants: 14,
-    capacity: 15,
-    coordinator: "Maya Chen",
-    readiness: 100,
-    tags: ["moon", "fire"],
-  },
-  {
-    id: "5",
-    title: "Autumn Harvest Celebration",
-    type: "Festival",
-    status: "canceled",
-    start_datetime: "2025-09-22T10:00:00",
-    end_datetime: "2025-09-23T18:00:00",
-    location: "Sacred Valley Ranch",
-    participants: 8,
-    capacity: 25,
-    coordinator: "River Stone",
-    readiness: 45,
-    tags: ["harvest", "outdoor"],
-  },
-];
+interface EventRow {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  start_datetime: string;
+  end_datetime: string;
+  location?: string;
+  current_participant_count: number;
+  capacity: number | null;
+}
 
 function getStatusVariant(status: string) {
   switch (status) {
@@ -128,15 +80,65 @@ function getStatusVariant(status: string) {
 }
 
 export default function EventsPage() {
+  const router = useRouter();
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [deleteTarget, setDeleteTarget] = useState<EventRow | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from("events")
+      .select("id, title, type, status, start_datetime, end_datetime, current_participant_count, capacity, locations(name)")
+      .order("start_datetime", { ascending: false })
+      .then(({ data }) => {
+        setEvents(
+          (data ?? []).map((e) => ({
+            ...e,
+            location: (e.locations as { name?: string } | null)?.name ?? "",
+          }))
+        );
+        setLoading(false);
+      });
+  }, []);
 
   const filtered = events.filter((e) => {
-    const matchesSearch = e.title.toLowerCase().includes(search.toLowerCase()) ||
-      e.location.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch =
+      e.title.toLowerCase().includes(search.toLowerCase()) ||
+      (e.location ?? "").toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || e.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const handleDuplicate = (event: EventRow) => {
+    setActionError(null);
+    startTransition(async () => {
+      const result = await duplicateEvent(event.id);
+      if (result.error) {
+        setActionError(result.error);
+      } else if (result.data) {
+        setEvents((prev) => [result.data as EventRow, ...prev]);
+      }
+    });
+  };
+
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    setActionError(null);
+    startTransition(async () => {
+      const result = await deleteEvent(deleteTarget.id);
+      if (result.error) {
+        setActionError(result.error);
+      } else {
+        setEvents((prev) => prev.filter((e) => e.id !== deleteTarget.id));
+        setDeleteTarget(null);
+      }
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -151,6 +153,12 @@ export default function EventsPage() {
           </Button>
         </Link>
       </div>
+
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" />{actionError}
+        </div>
+      )}
 
       {/* Filters */}
       <Card>
@@ -193,15 +201,20 @@ export default function EventsPage() {
                 <TableHead>Date</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Participants</TableHead>
-                <TableHead>Readiness</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12">
+                  <TableCell colSpan={6} className="text-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <CalendarDays className="h-8 w-8 text-muted-foreground" />
                       <p className="text-muted-foreground">No events found</p>
@@ -231,19 +244,14 @@ export default function EventsPage() {
                     <TableCell>
                       <div className="flex items-center gap-1.5 text-sm">
                         <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                        {event.location}
+                        {event.location || "—"}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5 text-sm">
                         <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                        {event.participants}/{event.capacity}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Progress value={event.readiness} className="w-16 h-2" />
-                        <span className="text-sm text-muted-foreground">{event.readiness}%</span>
+                        {event.current_participant_count ?? 0}
+                        {event.capacity ? `/${event.capacity}` : ""}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -254,19 +262,22 @@ export default function EventsPage() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled={isPending}>
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/events/${event.id}/edit`)}>
                             <Edit className="mr-2 h-4 w-4" /> Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDuplicate(event)}>
                             <Copy className="mr-2 h-4 w-4" /> Duplicate
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => setDeleteTarget(event)}
+                          >
                             <Trash2 className="mr-2 h-4 w-4" /> Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -279,6 +290,27 @@ export default function EventsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete &ldquo;{deleteTarget?.title}&rdquo;?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this event and all associated data. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isPending}>
+              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

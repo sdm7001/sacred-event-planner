@@ -7,8 +7,57 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { BarChart3, Download, Users, Package, CheckSquare, Shield, FileText, Printer } from "lucide-react";
+import { Download, Users, Package, CheckSquare, Shield, FileText, Printer } from "lucide-react";
 import { useState } from "react";
+
+function downloadCSV(headers: string[], rows: (string | number)[][], filename: string) {
+  const lines = [headers.join(","), ...rows.map((r) => r.join(","))];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+const rosterData = [
+  ["Metric", "Value"],
+  ["Total Registered", 18],
+  ["Confirmed RSVP", 15],
+  ["Tentative", 2],
+  ["Declined", 1],
+  ["Waivers Signed", "14/18 (78%)"],
+  ["Prep Compliant", "10/18 (56%)"],
+  ["Payment Complete", "13/18 (72%)"],
+];
+
+const materialsReportData = [
+  ["Metric", "Value"],
+  ["Total Items", 8],
+  ["In Stock", 4],
+  ["To Order", 3],
+  ["Ordered", 1],
+  ["Procurement %", "63%"],
+];
+
+const tasksReportData = [
+  ["Metric", "Value"],
+  ["Total Tasks", 7],
+  ["Completed", 2],
+  ["In Progress", 2],
+  ["Overdue", 2],
+  ["Pending", 1],
+  ["Completion %", "29%"],
+];
+
+const prepComplianceRows = [
+  ["Sarah Johnson", "confirmed", "signed", "paid", "compliant", "Vegetarian"],
+  ["Michael Rivera", "confirmed", "signed", "paid", "in_progress", ""],
+  ["Emily Chen", "confirmed", "not_sent", "unpaid", "not_started", "Vegan"],
+  ["David Kim", "tentative", "sent", "partial", "not_started", ""],
+  ["Jessica Patel", "confirmed", "signed", "paid", "compliant", "GF"],
+];
 
 const procurementData = [
   { name: "White Sage Bundle", category: "Ceremonial", required: 25, stock: 15, purchase: 10, vendor: "Sacred Herb Co.", status: "to_order" },
@@ -59,7 +108,7 @@ export default function ReportsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2"><Users className="h-4 w-4 text-sage" />Roster</CardTitle>
-              <Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Export</Button>
+              <Button variant="outline" size="sm" onClick={() => downloadCSV(["Metric", "Value"], rosterData.slice(1) as (string | number)[][], "roster-report.csv")}><Download className="mr-2 h-4 w-4" />Export</Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -81,7 +130,7 @@ export default function ReportsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2"><Package className="h-4 w-4 text-sage" />Materials</CardTitle>
-              <Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Export</Button>
+              <Button variant="outline" size="sm" onClick={() => downloadCSV(["Metric", "Value"], materialsReportData.slice(1) as (string | number)[][], "materials-report.csv")}><Download className="mr-2 h-4 w-4" />Export</Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -102,7 +151,7 @@ export default function ReportsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2"><CheckSquare className="h-4 w-4 text-sage" />Tasks</CardTitle>
-              <Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Export</Button>
+              <Button variant="outline" size="sm" onClick={() => downloadCSV(["Metric", "Value"], tasksReportData.slice(1) as (string | number)[][], "tasks-report.csv")}><Download className="mr-2 h-4 w-4" />Export</Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -148,8 +197,8 @@ export default function ReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {procurementData.map((m, i) => (
-                <TableRow key={i}>
+              {procurementData.map((m) => (
+                <TableRow key={m.name}>
                   <TableCell className="font-medium">{m.name}</TableCell>
                   <TableCell><Badge variant="outline">{m.category}</Badge></TableCell>
                   <TableCell className="text-right">{m.required}</TableCell>
@@ -174,7 +223,7 @@ export default function ReportsPage() {
               <CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5 text-sage" />Prep Compliance</CardTitle>
               <CardDescription>Participant preparation status breakdown</CardDescription>
             </div>
-            <Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Export</Button>
+            <Button variant="outline" size="sm" onClick={() => downloadCSV(["Name", "RSVP", "Waiver", "Payment", "Prep", "Dietary"], prepComplianceRows, "prep-compliance.csv")}><Download className="mr-2 h-4 w-4" />Export</Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -196,8 +245,8 @@ export default function ReportsPage() {
                 { name: "Emily Chen", rsvp: "confirmed", waiver: "not_sent", payment: "unpaid", prep: "not_started", dietary: "Vegan" },
                 { name: "David Kim", rsvp: "tentative", waiver: "sent", payment: "partial", prep: "not_started", dietary: "---" },
                 { name: "Jessica Patel", rsvp: "confirmed", waiver: "signed", payment: "paid", prep: "compliant", dietary: "GF" },
-              ].map((p, i) => (
-                <TableRow key={i}>
+              ].map((p) => (
+                <TableRow key={p.name}>
                   <TableCell className="font-medium">{p.name}</TableCell>
                   <TableCell><Badge variant={p.rsvp === "confirmed" ? "sage" : "secondary"} className="text-xs">{p.rsvp}</Badge></TableCell>
                   <TableCell><Badge variant={p.waiver === "signed" ? "sage" : p.waiver === "not_sent" ? "destructive" : "secondary"} className="text-xs">{p.waiver.replace("_", " ")}</Badge></TableCell>

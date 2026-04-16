@@ -134,11 +134,11 @@ export default function SettingsPage() {
           </div>
           <div className="space-y-2">
             <Label>EMAIL_FROM_ADDRESS</Label>
-            <Input value={process.env.EMAIL_FROM_ADDRESS ?? "noreply@sacredgatherings.com"} readOnly className="opacity-60 cursor-not-allowed" />
+            <Input value="noreply@sacredgatherings.com" readOnly className="opacity-60 cursor-not-allowed" />
           </div>
           <div className="space-y-2">
             <Label>EMAIL_FROM_NAME</Label>
-            <Input value={process.env.EMAIL_FROM_NAME ?? "Sacred Gatherings"} readOnly className="opacity-60 cursor-not-allowed" />
+            <Input value="Sacred Gatherings" readOnly className="opacity-60 cursor-not-allowed" />
           </div>
         </CardContent>
       </Card>

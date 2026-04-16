@@ -59,6 +59,16 @@ const SEED_TEMPLATES: Template[] = [
   },
 ];
 
+/** Strip script/style tags and on* attributes to prevent XSS in preview */
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    .replace(/\s+on\w+="[^"]*"/gi, "")
+    .replace(/\s+on\w+='[^']*'/gi, "")
+    .replace(/javascript:/gi, "");
+}
+
 const TOKEN_REFERENCE = [
   "first_name", "last_name", "full_name", "email",
   "event_name", "event_date", "venue_name", "venue_address",
@@ -212,7 +222,7 @@ export default function EmailTemplatesPage() {
                 {preview === tmpl.id && (
                   <div className="mt-3 p-4 rounded-lg border bg-background">
                     <p className="text-xs text-muted-foreground mb-2">Preview (tokens shown as-is):</p>
-                    <div className="prose prose-sm dark:prose-invert max-w-none text-sm" dangerouslySetInnerHTML={{ __html: tmpl.body_html }} />
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-sm" dangerouslySetInnerHTML={{ __html: sanitizeHtml(tmpl.body_html) }} />
                   </div>
                 )}
               </div>
