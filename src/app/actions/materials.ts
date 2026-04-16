@@ -56,6 +56,9 @@ export async function updateDosingRule(
   excluded: boolean,
   notes: string
 ) {
+  // A participant cannot have both a custom dose and be excluded — excluded takes precedence
+  const resolvedDose = excluded ? null : customDose;
+
   const supabase = await createClient();
 
   const { error } = await supabase
@@ -64,7 +67,7 @@ export async function updateDosingRule(
       {
         event_material_id: eventMaterialId,
         participant_id: participantId,
-        custom_dose: customDose,
+        custom_dose: resolvedDose,
         excluded,
         notes,
       },

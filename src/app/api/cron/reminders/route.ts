@@ -77,7 +77,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // Deduplicate: check for existing jobs
+    // Deduplicate: skip if a non-failed job already exists for this rule+recipient
     for (const recipient of recipientIds) {
       const { data: existing } = await supabase
         .from("email_jobs")
@@ -85,6 +85,8 @@ export async function GET(request: Request) {
         .eq("event_id", rule.event_id)
         .eq("recipient_id", recipient.id)
         .eq("recipient_type", recipient.type)
+        .eq("rule_id", rule.id)
+        .neq("status", "failed")
         .limit(1);
 
       if (existing && existing.length > 0) continue;
@@ -92,7 +94,8 @@ export async function GET(request: Request) {
       // Queue email job
       await supabase.from("email_jobs").insert({
         event_id: rule.event_id,
-        template_id: null, // Link to prep instruction template if available
+        rule_id: rule.id,
+        template_id: rule.template_id ?? null,
         recipient_type: recipient.type,
         recipient_id: recipient.id,
         scheduled_for: new Date().toISOString(),

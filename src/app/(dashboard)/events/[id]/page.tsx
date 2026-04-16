@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import Link from "next/link";
 import {
   Select,
@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { updateRSVP, updateWaiverStatus, sendWaiver, type RSVPStatus, type WaiverStatus } from "@/app/actions/event-participants";
+import { addEventNote, getEventNotes, deleteEventNote, type Note } from "@/app/actions/notes";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -42,9 +42,10 @@ import {
   StickyNote,
   ExternalLink,
   Plus,
-  AlertTriangle,
   Shield,
   Pill,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { formatDateTime, getDirectionsLink } from "@/lib/utils";
 
@@ -160,6 +161,41 @@ export default function EventDetailPage() {
   const [rsvpPending, startRsvpTransition] = useTransition();
   const [waiverPending, startWaiverTransition] = useTransition();
 
+  // Notes state
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [noteText, setNoteText] = useState("");
+  const [noteAdminOnly, setNoteAdminOnly] = useState(false);
+  const [notesPending, startNotesTransition] = useTransition();
+  const notesLoadedRef = useRef(false);
+
+  const loadNotes = () => {
+    if (notesLoadedRef.current) return;
+    notesLoadedRef.current = true;
+    startNotesTransition(async () => {
+      const result = await getEventNotes(event.id);
+      if (!result.error) setNotes(result.notes);
+    });
+  };
+
+  const handleAddNote = () => {
+    if (!noteText.trim()) return;
+    startNotesTransition(async () => {
+      const result = await addEventNote(event.id, noteText.trim(), noteAdminOnly);
+      if (!result.error && result.data) {
+        setNotes((prev) => [result.data as Note, ...prev]);
+        setNoteText("");
+        setNoteAdminOnly(false);
+      }
+    });
+  };
+
+  const handleDeleteNote = (noteId: string) => {
+    setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    startNotesTransition(async () => {
+      await deleteEventNote(event.id, noteId);
+    });
+  };
+
   const handleRsvpChange = (participantId: string, rsvp_status: RSVPStatus) => {
     setLocalParticipants((prev) =>
       prev.map((p) => (p.id === participantId ? { ...p, rsvp: rsvp_status } : p))
@@ -263,7 +299,7 @@ export default function EventDetailPage() {
       </Card>
 
       {/* Tabs */}
-      <Tabs defaultValue="overview" className="space-y-4">
+      <Tabs defaultValue="overview" className="space-y-4" onValueChange={(v) => { if (v === "notes") loadNotes(); }}>
         <TabsList className="flex-wrap h-auto gap-1 bg-transparent p-0">
           {[
             { value: "overview", label: "Overview", icon: CalendarDays },
@@ -757,31 +793,66 @@ export default function EventDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Textarea placeholder="Add a note..." rows={3} />
+                <Textarea
+                  placeholder="Add a note..."
+                  rows={3}
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                />
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Checkbox id="admin-only" />
+                    <Checkbox
+                      id="admin-only"
+                      checked={noteAdminOnly}
+                      onCheckedChange={(v) => setNoteAdminOnly(!!v)}
+                    />
                     <label htmlFor="admin-only" className="text-sm text-muted-foreground">Admin only</label>
                   </div>
-                  <Button size="sm">Add Note</Button>
+                  <Button
+                    size="sm"
+                    onClick={handleAddNote}
+                    disabled={notesPending || !noteText.trim()}
+                    className="bg-sage hover:bg-sage-dark"
+                  >
+                    {notesPending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-2 h-3.5 w-3.5" />}
+                    Add Note
+                  </Button>
                 </div>
               </div>
               <Separator />
-              <div className="space-y-3">
-                {[
-                  { author: "Maya Chen", date: "Mar 10", content: "River Stone confirmed sunrise ceremony plan. Will need extra blankets for participants.", admin: false },
-                  { author: "Maya Chen", date: "Mar 8", content: "Emily Chen has not submitted waiver yet. Follow up needed.", admin: true },
-                ].map((note, i) => (
-                  <div key={i} className="p-3 rounded-lg border">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium">{note.author}</span>
-                      <span className="text-xs text-muted-foreground">{note.date}</span>
-                      {note.admin && <Badge variant="outline" className="text-xs"><Shield className="mr-1 h-3 w-3" /> Admin</Badge>}
+              {notesPending && notes.length === 0 ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : notes.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No notes yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {notes.map((note) => (
+                    <div key={note.id} className="p-3 rounded-lg border group">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(note.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          </span>
+                          {note.is_admin_only && (
+                            <Badge variant="outline" className="text-xs">
+                              <Shield className="mr-1 h-3 w-3" /> Admin
+                            </Badge>
+                          )}
+                        </div>
+                        <button
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeleteNote(note.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap">{note.body}</p>
                     </div>
-                    <p className="text-sm">{note.content}</p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

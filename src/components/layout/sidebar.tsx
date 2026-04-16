@@ -20,6 +20,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
+  ClipboardList,
+  ShieldAlert,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -37,7 +39,9 @@ const navigation = [
   { name: "Email Templates", href: "/email-templates", icon: Mail },
   { name: "Communications", href: "/communications", icon: MessageSquare },
   { name: "Reports", href: "/reports", icon: BarChart3 },
+  { name: "Checklists", href: "/checklists", icon: ClipboardList },
   { name: "Documents", href: "/documents", icon: FileText },
+  { name: "Audit Logs", href: "/audit-logs", icon: ShieldAlert },
   { name: "Settings", href: "/settings", icon: Settings },
   { name: "User Management", href: "/settings/users", icon: Shield },
 ];
