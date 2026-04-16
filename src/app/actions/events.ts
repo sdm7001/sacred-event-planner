@@ -75,6 +75,38 @@ export async function createEvent(input: CreateEventInput) {
   return { data };
 }
 
+export async function updateEventInput(id: string, input: Partial<CreateEventInput> & { status?: string }) {
+  const supabase = await createClient();
+
+  const updates: Record<string, unknown> = {};
+  if (input.title !== undefined) updates.title = input.title;
+  if (input.type !== undefined) updates.type = input.type || null;
+  if (input.status !== undefined) updates.status = input.status;
+  if (input.description !== undefined) updates.description = input.description || null;
+  if (input.ceremony_notes !== undefined) updates.ceremony_notes = input.ceremony_notes || null;
+  if (input.start_datetime !== undefined) updates.start_datetime = input.start_datetime;
+  if (input.end_datetime !== undefined) updates.end_datetime = input.end_datetime;
+  if (input.timezone !== undefined) updates.timezone = input.timezone;
+  if (input.capacity !== undefined) updates.capacity = input.capacity ?? null;
+  if (input.waitlist_enabled !== undefined) updates.waitlist_enabled = input.waitlist_enabled;
+  if (input.public_notes !== undefined) updates.public_notes = input.public_notes || null;
+  if (input.private_notes !== undefined) updates.private_notes = input.private_notes || null;
+  if (input.tags !== undefined) updates.tags = input.tags ?? [];
+
+  const { data, error } = await supabase
+    .from("events")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/events/${id}`);
+  revalidatePath("/events");
+  return { data };
+}
+
 export async function updateEvent(id: string, formData: FormData) {
   const supabase = await createClient();
 

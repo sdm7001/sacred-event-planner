@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,8 @@ const participantOverrides = [
 ];
 
 export default function MaterialsDosingPage() {
+  const params = useParams();
+  const eventId = params.id as string;
   const [materials, setMaterials] = useState(initialMaterials);
   const participantCount = 18;
   const providerCount = 3;
@@ -114,7 +117,7 @@ export default function MaterialsDosingPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link href="/events/1">
+        <Link href={`/events/${eventId}`}>
           <Button variant="ghost" size="icon">
             <ArrowLeft className="h-4 w-4" />
           </Button>

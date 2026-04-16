@@ -1,16 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Plus, Bell, Clock, Users, Mail, Copy, Trash2, CalendarDays } from "lucide-react";
 
-const workflows = [
+interface ReminderRule {
+  id: string;
+  title: string;
+  offsetDays: number;
+  audience: string;
+  active: boolean;
+}
+
+interface Workflow {
+  id: string;
+  event: string;
+  eventDate: string;
+  rules: ReminderRule[];
+}
+
+const initialWorkflows: Workflow[] = [
   {
     id: "w1",
     event: "Spring Equinox Retreat",
@@ -34,6 +46,40 @@ const workflows = [
 ];
 
 export default function RemindersPage() {
+  const [workflows, setWorkflows] = useState<Workflow[]>(initialWorkflows);
+  const [clonedId, setClonedId] = useState<string | null>(null);
+
+  const cloneWorkflow = (wf: Workflow) => {
+    const newId = `w${Date.now()}`;
+    const cloned: Workflow = {
+      ...wf,
+      id: newId,
+      event: `${wf.event} (Copy)`,
+      rules: wf.rules.map((r) => ({ ...r, id: `${r.id}-${newId}` })),
+    };
+    setWorkflows((prev) => [...prev, cloned]);
+    setClonedId(newId);
+    setTimeout(() => setClonedId(null), 3000);
+  };
+
+  const toggleRule = (wfId: string, ruleId: string) => {
+    setWorkflows((prev) =>
+      prev.map((wf) =>
+        wf.id === wfId
+          ? { ...wf, rules: wf.rules.map((r) => (r.id === ruleId ? { ...r, active: !r.active } : r)) }
+          : wf
+      )
+    );
+  };
+
+  const deleteRule = (wfId: string, ruleId: string) => {
+    setWorkflows((prev) =>
+      prev.map((wf) =>
+        wf.id === wfId ? { ...wf, rules: wf.rules.filter((r) => r.id !== ruleId) } : wf
+      )
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -45,6 +91,12 @@ export default function RemindersPage() {
           <Plus className="mr-2 h-4 w-4" /> New Workflow
         </Button>
       </div>
+
+      {clonedId && (
+        <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          Workflow cloned successfully.
+        </div>
+      )}
 
       <Card className="bg-sage-50/50 dark:bg-sage-900/10 border-sage-200 dark:border-sage-800">
         <CardContent className="pt-6">
@@ -74,8 +126,12 @@ export default function RemindersPage() {
                 <CardDescription>Event date: {wf.eventDate}</CardDescription>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm"><Copy className="mr-2 h-4 w-4" /> Clone</Button>
-                <Button size="sm" className="bg-sage hover:bg-sage-dark"><Plus className="mr-2 h-4 w-4" /> Add Rule</Button>
+                <Button variant="outline" size="sm" onClick={() => cloneWorkflow(wf)}>
+                  <Copy className="mr-2 h-4 w-4" /> Clone
+                </Button>
+                <Button size="sm" className="bg-sage hover:bg-sage-dark">
+                  <Plus className="mr-2 h-4 w-4" /> Add Rule
+                </Button>
               </div>
             </div>
           </CardHeader>
@@ -83,7 +139,7 @@ export default function RemindersPage() {
             <div className="space-y-3">
               {wf.rules.map((rule) => (
                 <div key={rule.id} className="flex items-center gap-4 p-4 rounded-lg border">
-                  <Switch checked={rule.active} />
+                  <Switch checked={rule.active} onCheckedChange={() => toggleRule(wf.id, rule.id)} />
                   <Bell className="h-4 w-4 text-sage" />
                   <div className="flex-1">
                     <p className="text-sm font-medium">{rule.title}</p>
@@ -96,7 +152,12 @@ export default function RemindersPage() {
                   <Badge variant={rule.active ? "sage" : "secondary"}>
                     {rule.active ? "Active" : "Paused"}
                   </Badge>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteRule(wf.id, rule.id)}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>

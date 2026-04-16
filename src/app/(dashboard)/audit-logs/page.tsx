@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,8 @@ const ACTION_COLOR: Record<string, string> = {
 };
 
 export default function AuditLogsPage() {
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [search, setSearch] = useState("");
   const [tableFilter, setTableFilter] = useState("all");
@@ -36,6 +39,25 @@ export default function AuditLogsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) { router.replace("/login"); return; }
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", data.user.id)
+        .single();
+      const role = (roleData as { role?: string } | null)?.role ?? "";
+      if (role !== "super_admin" && role !== "admin") {
+        router.replace("/");
+        return;
+      }
+      setAuthorized(true);
+    });
+  }, [router]);
+
+  useEffect(() => {
+    if (!authorized) return;
     startTransition(async () => {
       const supabase = createClient();
       const { data } = await supabase
@@ -48,7 +70,7 @@ export default function AuditLogsPage() {
       setLogs(rows);
       setTables([...new Set(rows.map((r) => r.table_name))].sort());
     });
-  }, []);
+  }, [authorized]);
 
   const filtered = logs.filter((log) => {
     if (tableFilter !== "all" && log.table_name !== tableFilter) return false;
@@ -64,6 +86,14 @@ export default function AuditLogsPage() {
     }
     return true;
   });
+
+  if (!authorized) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

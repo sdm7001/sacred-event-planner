@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Shield, Plus, Pencil, Key, Mail, Loader2, AlertCircle } from "lucide-react";
-import { inviteUser, updateUser, resetUserPassword } from "@/app/actions/users";
+import { inviteUser, updateUser, resetUserPassword, listUsers } from "@/app/actions/users";
 
 type UserRole = "super_admin" | "admin" | "coordinator" | "provider" | "participant";
 
@@ -39,14 +39,27 @@ const ROLE_COLORS: Record<UserRole, string> = {
   participant: "bg-stone-100 text-stone-700",
 };
 
-// Seed display data — replace with real Supabase query in production
-const MOCK_USERS: UserRecord[] = [
-  { id: "1", email: "smcauley@texmg.com", full_name: "Scott McAuley", role: "super_admin", is_active: true, last_sign_in: "2026-04-15" },
-];
-
 export default function UsersPage() {
-  const [users, setUsers] = useState<UserRecord[]>(MOCK_USERS);
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
   const [editUser, setEditUser] = useState<UserRecord | null>(null);
+
+  useEffect(() => {
+    listUsers().then((result) => {
+      if (!result.error && result.users.length > 0) {
+        setUsers(
+          result.users.map((u) => ({
+            id: u.id,
+            email: u.email,
+            full_name: u.full_name ?? u.email,
+            role: ((u.user_roles as { role?: string }[])?.[0]?.role ?? "coordinator") as UserRole,
+            is_active: true,
+          }))
+        );
+      }
+      setLoadingUsers(false);
+    });
+  }, []);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -177,7 +190,9 @@ export default function UsersPage() {
           <CardTitle className="text-lg flex items-center gap-2">
             <Shield className="h-4 w-4 text-sage" />System Users
           </CardTitle>
-          <CardDescription>{users.length} user{users.length !== 1 ? "s" : ""} with system access</CardDescription>
+          <CardDescription>
+            {loadingUsers ? "Loading…" : `${users.length} user${users.length !== 1 ? "s" : ""} with system access`}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">

@@ -10,6 +10,29 @@ import { Separator } from "@/components/ui/separator";
 import { BarChart3, Download, Users, Package, CheckSquare, Shield, FileText, Printer } from "lucide-react";
 import { useState } from "react";
 
+const procurementData = [
+  { name: "White Sage Bundle", category: "Ceremonial", required: 25, stock: 15, purchase: 10, vendor: "Sacred Herb Co.", status: "to_order" },
+  { name: "Ceremonial Candles", category: "Ceremonial", required: 40, stock: 8, purchase: 32, vendor: "Beeswax Naturals", status: "ordered" },
+  { name: "Purified Water", category: "Consumable", required: 30, stock: 5, purchase: 25, vendor: "Spring Valley", status: "to_order" },
+];
+
+function exportCSV(rows: typeof procurementData, filename: string) {
+  const headers = ["Name", "Category", "Required", "In Stock", "To Purchase", "Vendor", "Status"];
+  const lines = [
+    headers.join(","),
+    ...rows.map((r) =>
+      [r.name, r.category, r.required, r.stock, r.purchase, r.vendor, r.status].join(",")
+    ),
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function ReportsPage() {
   const [selectedEvent, setSelectedEvent] = useState("1");
 
@@ -106,8 +129,8 @@ export default function ReportsPage() {
               <CardDescription>Items that need to be purchased for this event</CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm"><Printer className="mr-2 h-4 w-4" />Print</Button>
-              <Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" />Export CSV</Button>
+              <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Print</Button>
+              <Button variant="outline" size="sm" onClick={() => exportCSV(procurementData, "procurement.csv")}><Download className="mr-2 h-4 w-4" />Export CSV</Button>
             </div>
           </div>
         </CardHeader>
@@ -125,11 +148,7 @@ export default function ReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[
-                { name: "White Sage Bundle", category: "Ceremonial", required: 25, stock: 15, purchase: 10, vendor: "Sacred Herb Co.", status: "to_order" },
-                { name: "Ceremonial Candles", category: "Ceremonial", required: 40, stock: 8, purchase: 32, vendor: "Beeswax Naturals", status: "ordered" },
-                { name: "Purified Water", category: "Consumable", required: 30, stock: 5, purchase: 25, vendor: "Spring Valley", status: "to_order" },
-              ].map((m, i) => (
+              {procurementData.map((m, i) => (
                 <TableRow key={i}>
                   <TableCell className="font-medium">{m.name}</TableCell>
                   <TableCell><Badge variant="outline">{m.category}</Badge></TableCell>

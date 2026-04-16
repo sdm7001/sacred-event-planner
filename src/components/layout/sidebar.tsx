@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -23,7 +25,6 @@ import {
   ClipboardList,
   ShieldAlert,
 } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -49,9 +50,25 @@ const navigation = [
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [userInitial, setUserInitial] = useState("A");
+  const [userName, setUserName] = useState("Admin");
+  const [userRole, setUserRole] = useState("Coordinator");
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        const name = (data.user.user_metadata?.full_name as string) || data.user.email || "Admin";
+        setUserName(name.split(" ")[0]); // first name only for sidebar
+        setUserInitial(name.charAt(0).toUpperCase());
+        const role = (data.user.user_metadata?.role as string) || "Coordinator";
+        setUserRole(role.charAt(0).toUpperCase() + role.slice(1));
+      }
+    });
+  }, []);
 
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider delayDuration={500}>
       <aside
         className={cn(
           "flex flex-col border-r bg-card transition-all duration-300",
@@ -126,11 +143,11 @@ export function Sidebar() {
           {!collapsed && (
             <div className="flex items-center gap-3">
               <div className="h-8 w-8 rounded-full bg-sage/20 flex items-center justify-center">
-                <span className="text-xs font-semibold text-sage">A</span>
+                <span className="text-xs font-semibold text-sage">{userInitial}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Admin</p>
-                <p className="text-xs text-muted-foreground truncate">Coordinator</p>
+                <p className="text-sm font-medium truncate">{userName}</p>
+                <p className="text-xs text-muted-foreground truncate">{userRole}</p>
               </div>
             </div>
           )}

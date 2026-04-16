@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ function contractColor(status: string) {
 }
 
 export default function ProvidersPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
 
   const filtered = providers.filter((p) =>
@@ -110,8 +112,8 @@ export default function ProvidersPage() {
                         <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                        <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Contact</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push(`/providers/${p.id}/edit`)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { window.location.href = `mailto:${p.email}`; }}><Mail className="mr-2 h-4 w-4" /> Contact</DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Remove</DropdownMenuItem>
                       </DropdownMenuContent>
