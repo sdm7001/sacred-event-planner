@@ -13,54 +13,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
-
-// Demo data for dashboard
-const upcomingEvents = [
-  {
-    id: "1",
-    title: "Spring Equinox Retreat",
-    date: "Mar 20-22, 2026",
-    status: "confirmed",
-    participants: 18,
-    capacity: 20,
-    readiness: 82,
-  },
-  {
-    id: "2",
-    title: "New Moon Ceremony",
-    date: "Mar 29, 2026",
-    status: "scheduled",
-    participants: 12,
-    capacity: 15,
-    readiness: 65,
-  },
-  {
-    id: "3",
-    title: "Summer Solstice Gathering",
-    date: "Jun 20-21, 2026",
-    status: "draft",
-    participants: 0,
-    capacity: 30,
-    readiness: 15,
-  },
-];
-
-const overdueTasks = [
-  { id: "1", title: "Confirm venue access for Spring Retreat", event: "Spring Equinox Retreat", dueDate: "Mar 10", priority: "high" },
-  { id: "2", title: "Send prep instructions to new participants", event: "Spring Equinox Retreat", dueDate: "Mar 12", priority: "urgent" },
-  { id: "3", title: "Order additional sage bundles", event: "New Moon Ceremony", dueDate: "Mar 15", priority: "medium" },
-];
-
-const lowStockItems = [
-  { name: "White Sage Bundle", current: 3, threshold: 10, unit: "bundles" },
-  { name: "Ceremonial Candles", current: 8, threshold: 20, unit: "units" },
-  { name: "Purified Water", current: 5, threshold: 15, unit: "gallons" },
-];
-
-const todayReminders = [
-  { title: "Dietary restriction confirmation due", event: "Spring Equinox Retreat", time: "9:00 AM" },
-  { title: "Provider arrival confirmation", event: "Spring Equinox Retreat", time: "2:00 PM" },
-];
+import { createClient } from "@/lib/supabase/server";
 
 function getStatusVariant(status: string) {
   switch (status) {
@@ -80,7 +33,78 @@ function getPriorityColor(priority: string) {
   }
 }
 
-export default function DashboardPage() {
+function formatEventDateRange(start: string, end: string): string {
+  const s = new Date(start);
+  const e = new Date(end);
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  if (s.toDateString() === e.toDateString()) {
+    return s.toLocaleDateString("en-US", { ...opts, year: "numeric" });
+  }
+  return `${s.toLocaleDateString("en-US", opts)} – ${e.toLocaleDateString("en-US", { ...opts, year: "numeric" })}`;
+}
+
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const now = new Date().toISOString();
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  // Upcoming events (next 90 days, not completed/canceled)
+  const { data: upcomingEvents } = await supabase
+    .from("events")
+    .select("id, title, status, start_datetime, end_datetime, capacity, current_participant_count")
+    .gte("start_datetime", now)
+    .not("status", "in", '("completed","canceled")')
+    .order("start_datetime", { ascending: true })
+    .limit(5);
+
+  // Overdue tasks
+  const { data: overdueTasks } = await supabase
+    .from("tasks")
+    .select("id, title, priority, due_date, event_id, events(title)")
+    .lt("due_date", new Date().toISOString().split("T")[0])
+    .not("status", "in", '("completed","canceled")')
+    .order("due_date", { ascending: true })
+    .limit(5);
+
+  // Low stock materials
+  const { data: lowStockItems } = await supabase
+    .from("materials_catalog")
+    .select("id, name, in_house_qty, reorder_threshold, unit_of_measure")
+    .eq("is_active", true)
+    .filter("in_house_qty", "lt", "reorder_threshold")
+    .order("in_house_qty", { ascending: true })
+    .limit(5);
+
+  // Today's scheduled email jobs
+  const { data: todayReminders } = await supabase
+    .from("email_jobs")
+    .select("id, scheduled_for, email_templates(name, subject), events(title)")
+    .eq("status", "pending")
+    .gte("scheduled_for", todayStart.toISOString())
+    .lte("scheduled_for", todayEnd.toISOString())
+    .order("scheduled_for", { ascending: true })
+    .limit(5);
+
+  // Stats
+  type UpcomingEvent = NonNullable<typeof upcomingEvents>[number];
+
+  const totalParticipants = (upcomingEvents ?? []).reduce(
+    (sum: number, e: UpcomingEvent) => sum + (e.current_participant_count ?? 0),
+    0
+  );
+  const avgReadiness =
+    (upcomingEvents ?? []).length > 0
+      ? Math.round(
+          (upcomingEvents ?? []).reduce((sum: number, e: UpcomingEvent) => {
+            const pct = e.capacity ? (e.current_participant_count / e.capacity) * 100 : 0;
+            return sum + pct;
+          }, 0) / (upcomingEvents ?? []).length
+        )
+      : 0;
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -107,8 +131,8 @@ export default function DashboardPage() {
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">Next 30 days</p>
+            <div className="text-2xl font-bold">{(upcomingEvents ?? []).length}</div>
+            <p className="text-xs text-muted-foreground">Next 90 days</p>
           </CardContent>
         </Card>
         <Card>
@@ -117,7 +141,7 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">30</div>
+            <div className="text-2xl font-bold">{totalParticipants}</div>
             <p className="text-xs text-muted-foreground">Across active events</p>
           </CardContent>
         </Card>
@@ -127,18 +151,20 @@ export default function DashboardPage() {
             <AlertTriangle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">3</div>
+            <div className="text-2xl font-bold text-destructive">
+              {(overdueTasks ?? []).length}
+            </div>
             <p className="text-xs text-muted-foreground">Needs attention</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Readiness</CardTitle>
+            <CardTitle className="text-sm font-medium">Avg Fill Rate</CardTitle>
             <TrendingUp className="h-4 w-4 text-sage" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-sage">54%</div>
-            <p className="text-xs text-muted-foreground">Across confirmed events</p>
+            <div className="text-2xl font-bold text-sage">{avgReadiness}%</div>
+            <p className="text-xs text-muted-foreground">Participants / capacity</p>
           </CardContent>
         </Card>
       </div>
@@ -149,8 +175,8 @@ export default function DashboardPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Event Readiness</CardTitle>
-                <CardDescription>Preparation status for upcoming events</CardDescription>
+                <CardTitle>Upcoming Events</CardTitle>
+                <CardDescription>Participant fill rate for upcoming events</CardDescription>
               </div>
               <Link href="/events">
                 <Button variant="ghost" size="sm">
@@ -160,31 +186,48 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              {upcomingEvents.map((event) => (
-                <div key={event.id} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Link href={`/events/${event.id}`} className="font-medium hover:text-sage transition-colors">
-                        {event.title}
-                      </Link>
-                      <Badge variant={getStatusVariant(event.status)}>
-                        {event.status}
-                      </Badge>
+            {(upcomingEvents ?? []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <CalendarDays className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">No upcoming events</p>
+                <Link href="/events/new" className="mt-2">
+                  <Button size="sm" variant="outline">Create your first event</Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {(upcomingEvents ?? []).map((event) => {
+                  const fillPct = event.capacity
+                    ? Math.round((event.current_participant_count / event.capacity) * 100)
+                    : 0;
+                  return (
+                    <div key={event.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Link href={`/events/${event.id}`} className="font-medium hover:text-sage transition-colors">
+                            {event.title}
+                          </Link>
+                          <Badge variant={getStatusVariant(event.status)}>
+                            {event.status}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3.5 w-3.5" />
+                            {event.current_participant_count}/{event.capacity ?? "∞"}
+                          </span>
+                          <span>{formatEventDateRange(event.start_datetime, event.end_datetime)}</span>
+                          {event.capacity && (
+                            <span className="font-semibold text-foreground">{fillPct}%</span>
+                          )}
+                        </div>
+                      </div>
+                      {event.capacity && <Progress value={fillPct} className="h-2" />}
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5" />
-                        {event.participants}/{event.capacity}
-                      </span>
-                      <span>{event.date}</span>
-                      <span className="font-semibold text-foreground">{event.readiness}%</span>
-                    </div>
-                  </div>
-                  <Progress value={event.readiness} className="h-2" />
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -204,23 +247,34 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {overdueTasks.map((task) => (
-                <div key={task.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                  <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{task.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{task.event}</p>
+            {(overdueTasks ?? []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <CheckCircle2 className="h-8 w-8 text-sage mb-2" />
+                <p className="text-sm text-muted-foreground">No overdue tasks</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {(overdueTasks ?? []).map((task) => (
+                  <div key={task.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                    <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{task.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {(task.events as { title?: string } | null)?.title ?? "No event"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge className={getPriorityColor(task.priority)} variant="outline">
+                        {task.priority}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Due {new Date(task.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge className={getPriorityColor(task.priority)} variant="outline">
-                      {task.priority}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">Due {task.dueDate}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -240,23 +294,32 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {lowStockItems.map((item) => (
-                <div key={item.name} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <Package className="h-4 w-4 text-amber-500 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.current} / {item.threshold} {item.unit}
-                    </p>
+            {(lowStockItems ?? []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Package className="h-8 w-8 text-sage mb-2" />
+                <p className="text-sm text-muted-foreground">All materials well stocked</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {(lowStockItems ?? []).map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                    <Package className="h-4 w-4 text-amber-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.in_house_qty} / {item.reorder_threshold} {item.unit_of_measure}
+                      </p>
+                    </div>
+                    <Progress
+                      value={item.reorder_threshold > 0
+                        ? (item.in_house_qty / item.reorder_threshold) * 100
+                        : 0}
+                      className="w-24 h-2"
+                    />
                   </div>
-                  <Progress
-                    value={(item.current / item.threshold) * 100}
-                    className="w-24 h-2"
-                  />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -267,23 +330,32 @@ export default function DashboardPage() {
             <CardDescription>Scheduled communications for today</CardDescription>
           </CardHeader>
           <CardContent>
-            {todayReminders.length > 0 ? (
-              <div className="space-y-3">
-                {todayReminders.map((reminder, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                    <Clock className="h-4 w-4 text-sage mt-0.5 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{reminder.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{reminder.event}</p>
-                    </div>
-                    <span className="text-xs text-muted-foreground shrink-0">{reminder.time}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
+            {(todayReminders ?? []).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <CheckCircle2 className="h-8 w-8 text-sage mb-2" />
-                <p className="text-sm text-muted-foreground">No reminders for today</p>
+                <p className="text-sm text-muted-foreground">No reminders scheduled for today</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {(todayReminders ?? []).map((reminder) => (
+                  <div key={reminder.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                    <Clock className="h-4 w-4 text-sage mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">
+                        {(reminder.email_templates as { subject?: string } | null)?.subject ?? "Email reminder"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {(reminder.events as { title?: string } | null)?.title ?? ""}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {new Date(reminder.scheduled_for).toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>

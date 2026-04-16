@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,9 +22,36 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Users, Plus, Search, Mail, MoreHorizontal, Edit, Trash2, MapPin, Phone } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Users, Plus, Search, Mail, MoreHorizontal, Edit, Trash2, MapPin, Phone, Loader2 } from "lucide-react";
+import { removeParticipants } from "@/app/actions/participants";
+import { sendEmail } from "@/app/actions/email";
 
-const participants = [
+interface Participant {
+  id: string;
+  full_name: string;
+  preferred_name?: string;
+  email: string;
+  phone?: string;
+  city?: string;
+  state?: string;
+  events?: number;
+  lastEvent?: string;
+  waiver?: string;
+  prep?: string;
+}
+
+// TODO: Replace with real data from Supabase once participants page is converted to server component
+// For now using typed mock data — real fetch should use:
+// const { data: participants } = await supabase.from("participants").select("*, event_participants(count)").order("full_name")
+const INITIAL_PARTICIPANTS: Participant[] = [
   { id: "p1", full_name: "Sarah Johnson", preferred_name: "Sarah", email: "sarah@example.com", phone: "(512) 555-0101", city: "Austin", state: "TX", events: 4, lastEvent: "Spring Equinox", waiver: "signed", prep: "compliant" },
   { id: "p2", full_name: "Michael Rivera", preferred_name: "Mike", email: "michael@example.com", phone: "(512) 555-0102", city: "San Antonio", state: "TX", events: 2, lastEvent: "Spring Equinox", waiver: "signed", prep: "in_progress" },
   { id: "p3", full_name: "Emily Chen", preferred_name: "Em", email: "emily@example.com", phone: "(512) 555-0103", city: "Houston", state: "TX", events: 1, lastEvent: "Spring Equinox", waiver: "not_sent", prep: "not_started" },
@@ -45,18 +72,23 @@ function StatusDot({ status }: { status: string }) {
     not_started: "bg-gray-400",
   };
   return (
-    <span className={`inline-block h-2 w-2 rounded-full ${colors[status] || "bg-gray-400"}`} />
+    <span className={`inline-block h-2 w-2 rounded-full ${colors[status] ?? "bg-gray-400"}`} />
   );
 }
 
 export default function ParticipantsPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>(INITIAL_PARTICIPANTS);
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const filtered = participants.filter((p) =>
     p.full_name.toLowerCase().includes(search.toLowerCase()) ||
     p.email.toLowerCase().includes(search.toLowerCase()) ||
-    p.city.toLowerCase().includes(search.toLowerCase())
+    (p.city ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
   const toggleSelect = (id: string) => {
@@ -65,6 +97,33 @@ export default function ParticipantsPage() {
 
   const toggleAll = () => {
     setSelected((prev) => prev.length === filtered.length ? [] : filtered.map((p) => p.id));
+  };
+
+  const handleBulkRemove = () => {
+    setActionError(null);
+    startTransition(async () => {
+      const result = await removeParticipants(selected);
+      if (result.error) {
+        setActionError(result.error);
+      } else {
+        setParticipants((prev) => prev.filter((p) => !selected.includes(p.id)));
+        setSelected([]);
+        setConfirmRemoveOpen(false);
+      }
+    });
+  };
+
+  const handleBulkEmail = (templateId: string, eventId: string) => {
+    setActionError(null);
+    startTransition(async () => {
+      const result = await sendEmail(eventId, templateId, "participant", selected);
+      if (result.error) {
+        setActionError(result.error);
+      } else {
+        setEmailDialogOpen(false);
+        setSelected([]);
+      }
+    });
   };
 
   return (
@@ -78,6 +137,12 @@ export default function ParticipantsPage() {
           <Plus className="mr-2 h-4 w-4" /> Add Participant
         </Button>
       </div>
+
+      {actionError && (
+        <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
 
       <Card>
         <CardContent className="pt-6">
@@ -93,10 +158,22 @@ export default function ParticipantsPage() {
             </div>
             {selected.length > 0 && (
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
-                  <Mail className="mr-2 h-4 w-4" /> Email ({selected.length})
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEmailDialogOpen(true)}
+                  disabled={isPending}
+                >
+                  {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                  Email ({selected.length})
                 </Button>
-                <Button variant="outline" size="sm" className="text-destructive">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive"
+                  onClick={() => setConfirmRemoveOpen(true)}
+                  disabled={isPending}
+                >
                   <Trash2 className="mr-2 h-4 w-4" /> Remove ({selected.length})
                 </Button>
               </div>
@@ -137,37 +214,45 @@ export default function ParticipantsPage() {
                   <TableCell>
                     <Link href={`/participants/${p.id}`} className="hover:text-sage transition-colors">
                       <p className="font-medium">{p.full_name}</p>
-                      {p.preferred_name !== p.full_name.split(" ")[0] && (
+                      {p.preferred_name && p.preferred_name !== p.full_name.split(" ")[0] && (
                         <p className="text-xs text-muted-foreground">Goes by {p.preferred_name}</p>
                       )}
                     </Link>
                   </TableCell>
                   <TableCell>
                     <p className="text-sm">{p.email}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Phone className="h-3 w-3" /> {p.phone}
-                    </p>
+                    {p.phone && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Phone className="h-3 w-3" /> {p.phone}
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <span className="flex items-center gap-1 text-sm">
-                      <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                      {p.city}, {p.state}
-                    </span>
+                    {p.city && (
+                      <span className="flex items-center gap-1 text-sm">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                        {p.city}{p.state ? `, ${p.state}` : ""}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant="secondary">{p.events}</Badge>
+                    <Badge variant="secondary">{p.events ?? 0}</Badge>
                   </TableCell>
                   <TableCell>
-                    <span className="flex items-center gap-1.5 text-sm">
-                      <StatusDot status={p.waiver} />
-                      {p.waiver.replace("_", " ")}
-                    </span>
+                    {p.waiver && (
+                      <span className="flex items-center gap-1.5 text-sm">
+                        <StatusDot status={p.waiver} />
+                        {p.waiver.replace("_", " ")}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <span className="flex items-center gap-1.5 text-sm">
-                      <StatusDot status={p.prep} />
-                      {p.prep.replace("_", " ")}
-                    </span>
+                    {p.prep && (
+                      <span className="flex items-center gap-1.5 text-sm">
+                        <StatusDot status={p.prep} />
+                        {p.prep.replace("_", " ")}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -178,18 +263,79 @@ export default function ParticipantsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                        <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Send Email</DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => { setSelected([p.id]); setEmailDialogOpen(true); }}
+                        >
+                          <Mail className="mr-2 h-4 w-4" /> Send Email
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Remove</DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => { setSelected([p.id]); setConfirmRemoveOpen(true); }}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> Remove
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
+              {filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    No participants found
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {/* Confirm Remove Dialog */}
+      <Dialog open={confirmRemoveOpen} onOpenChange={setConfirmRemoveOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove {selected.length} participant{selected.length !== 1 ? "s" : ""}?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the selected participant{selected.length !== 1 ? "s" : ""} and all associated records. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRemoveOpen(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleBulkRemove} disabled={isPending}>
+              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Dialog — requires event + template selection */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Email to {selected.length} participant{selected.length !== 1 ? "s" : ""}</DialogTitle>
+            <DialogDescription>
+              Go to an event&apos;s Communications tab to select a template and send targeted emails to participants.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground py-2">
+            Bulk email requires choosing an event and template. Navigate to the event, then use the Communications tab to email selected participants.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>Close</Button>
+            <Link href="/communications">
+              <Button className="bg-sage hover:bg-sage-dark">
+                <Mail className="mr-2 h-4 w-4" /> Go to Communications
+              </Button>
+            </Link>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

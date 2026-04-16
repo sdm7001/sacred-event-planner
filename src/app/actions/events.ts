@@ -3,46 +3,73 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function createEvent(formData: FormData) {
+export interface CreateEventInput {
+  title: string;
+  type?: string;
+  description?: string;
+  ceremony_notes?: string;
+  start_datetime: string;
+  end_datetime: string;
+  timezone: string;
+  capacity?: number | null;
+  waitlist_enabled?: boolean;
+  public_notes?: string;
+  private_notes?: string;
+  tags?: string[];
+  // Inline venue fields — a new location row will be created automatically
+  venue_name?: string;
+  venue_address?: string;
+  venue_parking_notes?: string;
+  venue_entry_instructions?: string;
+  venue_arrival_window?: string;
+  venue_onsite_contact?: string;
+}
+
+export async function createEvent(input: CreateEventInput) {
   const supabase = await createClient();
 
-  const title = formData.get("title") as string;
-  const type = formData.get("type") as string;
-  const description = formData.get("description") as string;
-  const ceremony_notes = formData.get("ceremony_notes") as string;
-  const start_datetime = formData.get("start_datetime") as string;
-  const end_datetime = formData.get("end_datetime") as string;
-  const timezone = formData.get("timezone") as string;
-  const capacity = formData.get("capacity") ? Number(formData.get("capacity")) : null;
-  const waitlist_enabled = formData.get("waitlist_enabled") === "true";
-  const public_notes = formData.get("public_notes") as string;
-  const private_notes = formData.get("private_notes") as string;
-  const tags = (formData.get("tags") as string)?.split(",").map((t) => t.trim()).filter(Boolean) || [];
-  const location_id = formData.get("location_id") as string;
+  let location_id: string | null = null;
+
+  // Create location row if venue details provided
+  if (input.venue_name) {
+    const { data: loc, error: locErr } = await supabase
+      .from("locations")
+      .insert({
+        name: input.venue_name,
+        address: input.venue_address || null,
+        parking_notes: input.venue_parking_notes || null,
+        entry_instructions: input.venue_entry_instructions || null,
+        arrival_window: input.venue_arrival_window || null,
+        onsite_contact: input.venue_onsite_contact || null,
+      })
+      .select("id")
+      .single();
+
+    if (locErr) return { error: `Location error: ${locErr.message}` };
+    location_id = loc.id;
+  }
 
   const { data, error } = await supabase
     .from("events")
     .insert({
-      title,
-      type,
-      description,
-      ceremony_notes,
-      start_datetime,
-      end_datetime,
-      timezone,
-      capacity,
-      waitlist_enabled,
-      public_notes,
-      private_notes,
-      tags,
-      location_id: location_id || null,
+      title: input.title,
+      type: input.type || null,
+      description: input.description || null,
+      ceremony_notes: input.ceremony_notes || null,
+      start_datetime: input.start_datetime,
+      end_datetime: input.end_datetime,
+      timezone: input.timezone,
+      capacity: input.capacity ?? null,
+      waitlist_enabled: input.waitlist_enabled ?? false,
+      public_notes: input.public_notes || null,
+      private_notes: input.private_notes || null,
+      tags: input.tags ?? [],
+      location_id,
     })
     .select()
     .single();
 
-  if (error) {
-    return { error: error.message };
-  }
+  if (error) return { error: error.message };
 
   revalidatePath("/events");
   return { data };

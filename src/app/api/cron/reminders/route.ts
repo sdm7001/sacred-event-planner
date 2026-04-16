@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { processEmailQueue } from "@/app/actions/email";
 
 /**
  * Reminder Engine - Cron endpoint
@@ -62,7 +63,7 @@ export async function GET(request: Request) {
         .select("participant_id")
         .eq("event_id", rule.event_id);
       if (eps) {
-        recipientIds.push(...eps.map((ep) => ({ id: ep.participant_id, type: "participant" })));
+        recipientIds.push(...eps.map((ep: { participant_id: string }) => ({ id: ep.participant_id, type: "participant" })));
       }
     }
 
@@ -72,7 +73,7 @@ export async function GET(request: Request) {
         .select("provider_id")
         .eq("event_id", rule.event_id);
       if (evp) {
-        recipientIds.push(...evp.map((ep) => ({ id: ep.provider_id, type: "provider" })));
+        recipientIds.push(...evp.map((ep: { provider_id: string }) => ({ id: ep.provider_id, type: "provider" })));
       }
     }
 
@@ -110,5 +111,13 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ queued, message: `Queued ${queued} reminder emails` });
+  // Process any pending email jobs (including ones just queued above)
+  const { processed, error: sendError } = await processEmailQueue();
+
+  return NextResponse.json({
+    queued,
+    processed,
+    message: `Queued ${queued} reminder emails, sent ${processed}`,
+    ...(sendError ? { sendError } : {}),
+  });
 }

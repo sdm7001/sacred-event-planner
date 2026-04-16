@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Shield, Plus, Pencil, UserX, Key, Mail } from "lucide-react";
+import { Shield, Plus, Pencil, Key, Mail, Loader2, AlertCircle } from "lucide-react";
+import { inviteUser, updateUser, resetUserPassword } from "@/app/actions/users";
 
 type UserRole = "super_admin" | "admin" | "coordinator" | "provider" | "participant";
 
@@ -51,6 +52,15 @@ export default function UsersPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<UserRole>("coordinator");
   const [inviteName, setInviteName] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const flashSuccess = (msg: string) => {
+    setActionSuccess(msg);
+    setActionError(null);
+    setTimeout(() => setActionSuccess(null), 4000);
+  };
 
   const openEdit = (user: UserRecord) => {
     setEditUser({ ...user });
@@ -59,23 +69,63 @@ export default function UsersPage() {
 
   const saveEdit = () => {
     if (!editUser) return;
-    setUsers((prev) => prev.map((u) => (u.id === editUser.id ? editUser : u)));
-    setIsEditOpen(false);
-    // TODO: call server action to update user in Supabase
-    alert("User updated. Connect to Supabase to persist changes.");
+    setActionError(null);
+    startTransition(async () => {
+      const result = await updateUser(editUser.id, {
+        full_name: editUser.full_name,
+        role: editUser.role,
+        is_active: editUser.is_active,
+      });
+      if (result.error) {
+        setActionError(result.error);
+      } else {
+        setUsers((prev) => prev.map((u) => (u.id === editUser.id ? editUser : u)));
+        setIsEditOpen(false);
+        flashSuccess("User updated successfully.");
+      }
+    });
   };
 
   const toggleActive = (userId: string) => {
-    setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, is_active: !u.is_active } : u));
-    // TODO: call server action
+    const user = users.find((u) => u.id === userId);
+    if (!user || user.role === "super_admin") return;
+    const newActive = !user.is_active;
+    setActionError(null);
+    startTransition(async () => {
+      const result = await updateUser(userId, { is_active: newActive });
+      if (result.error) {
+        setActionError(result.error);
+      } else {
+        setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, is_active: newActive } : u));
+      }
+    });
   };
 
   const sendInvite = () => {
-    // TODO: call server action to create Supabase invite
-    alert(`Invite sent to ${inviteEmail} with role ${ROLE_LABELS[inviteRole]}.\n\nConnect to Supabase to send real invites.`);
-    setIsInviteOpen(false);
-    setInviteEmail("");
-    setInviteName("");
+    setActionError(null);
+    startTransition(async () => {
+      const result = await inviteUser(inviteEmail, inviteName, inviteRole);
+      if (result.error) {
+        setActionError(result.error);
+      } else {
+        setIsInviteOpen(false);
+        setInviteEmail("");
+        setInviteName("");
+        flashSuccess(`Invite sent to ${inviteEmail}.`);
+      }
+    });
+  };
+
+  const handleResetPassword = (email: string) => {
+    setActionError(null);
+    startTransition(async () => {
+      const result = await resetUserPassword(email);
+      if (result.error) {
+        setActionError(result.error);
+      } else {
+        flashSuccess(`Password reset email sent to ${email}.`);
+      }
+    });
   };
 
   return (
@@ -85,10 +135,21 @@ export default function UsersPage() {
           <h1 className="text-3xl font-heading font-semibold tracking-tight">User Management</h1>
           <p className="text-muted-foreground mt-1">Manage access, roles, and invitations</p>
         </div>
-        <Button className="bg-sage hover:bg-sage-dark" onClick={() => setIsInviteOpen(true)}>
+        <Button className="bg-sage hover:bg-sage-dark" onClick={() => setIsInviteOpen(true)} disabled={isPending}>
           <Plus className="mr-2 h-4 w-4" />Invite User
         </Button>
       </div>
+
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" />{actionError}
+        </div>
+      )}
+      {actionSuccess && (
+        <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          <Loader2 className="h-4 w-4 shrink-0 hidden" />{actionSuccess}
+        </div>
+      )}
 
       {/* Role info */}
       <Card className="border-sage/30 bg-sage/5">
@@ -161,8 +222,9 @@ export default function UsersPage() {
                           <Pencil className="h-3 w-3 mr-1" />Edit
                         </Button>
                         <Button size="sm" variant="outline" className="text-muted-foreground"
-                          onClick={() => alert("Password reset email would be sent via Supabase Auth.")}>
-                          <Key className="h-3 w-3 mr-1" />Reset PW
+                          onClick={() => handleResetPassword(user.email)}
+                          disabled={isPending}>
+                          {isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Key className="h-3 w-3 mr-1" />}Reset PW
                         </Button>
                       </div>
                     </td>
@@ -217,8 +279,10 @@ export default function UsersPage() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
-            <Button className="bg-sage hover:bg-sage-dark" onClick={saveEdit}>Save Changes</Button>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isPending}>Cancel</Button>
+            <Button className="bg-sage hover:bg-sage-dark" onClick={saveEdit} disabled={isPending}>
+              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Save Changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -258,10 +322,10 @@ export default function UsersPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsInviteOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setIsInviteOpen(false)} disabled={isPending}>Cancel</Button>
             <Button className="bg-sage hover:bg-sage-dark" onClick={sendInvite}
-              disabled={!inviteEmail || !inviteName}>
-              <Mail className="mr-2 h-4 w-4" />Send Invite
+              disabled={!inviteEmail || !inviteName || isPending}>
+              {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}Send Invite
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { createEvent } from "@/app/actions/events";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, ArrowRight, Check, CalendarDays, MapPin, Users, FileText } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CalendarDays, MapPin, Users, FileText, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -29,6 +30,8 @@ const steps = [
 
 export default function NewEventPage() {
   const [currentStep, setCurrentStep] = useState(1);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
   const [form, setForm] = useState({
@@ -59,9 +62,39 @@ export default function NewEventPage() {
   };
 
   const handleSubmit = () => {
-    // In production: server action to create event
-    console.log("Creating event:", form);
-    router.push("/events");
+    setSubmitError(null);
+    startTransition(async () => {
+      const result = await createEvent({
+        title: form.title,
+        type: form.type || undefined,
+        description: form.description || undefined,
+        ceremony_notes: form.ceremony_notes || undefined,
+        start_datetime: form.start_date && form.start_time
+          ? `${form.start_date}T${form.start_time}:00`
+          : "",
+        end_datetime: form.end_date && form.end_time
+          ? `${form.end_date}T${form.end_time}:00`
+          : "",
+        timezone: form.timezone,
+        capacity: form.capacity ? Number(form.capacity) : null,
+        waitlist_enabled: form.waitlist_enabled,
+        public_notes: form.public_notes || undefined,
+        private_notes: form.private_notes || undefined,
+        tags: form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+        venue_name: form.venue_name || undefined,
+        venue_address: form.address || undefined,
+        venue_parking_notes: form.parking_notes || undefined,
+        venue_entry_instructions: form.entry_instructions || undefined,
+        venue_arrival_window: form.arrival_window || undefined,
+        venue_onsite_contact: form.onsite_contact || undefined,
+      });
+
+      if (result.error) {
+        setSubmitError(result.error);
+      } else {
+        router.push(`/events/${result.data.id}`);
+      }
+    });
   };
 
   return (
@@ -366,22 +399,30 @@ export default function NewEventPage() {
         </Card>
       )}
 
+      {/* Error banner */}
+      {submitError && (
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" />{submitError}
+        </div>
+      )}
+
       {/* Navigation buttons */}
       <div className="flex items-center justify-between">
         <Button
           variant="outline"
           onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
-          disabled={currentStep === 1}
+          disabled={currentStep === 1 || isPending}
         >
           <ArrowLeft className="mr-2 h-4 w-4" /> Previous
         </Button>
         {currentStep < 4 ? (
-          <Button onClick={() => setCurrentStep(currentStep + 1)}>
+          <Button onClick={() => setCurrentStep(currentStep + 1)} disabled={isPending}>
             Next <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         ) : (
-          <Button className="bg-sage hover:bg-sage-dark" onClick={handleSubmit}>
-            <Check className="mr-2 h-4 w-4" /> Create Event
+          <Button className="bg-sage hover:bg-sage-dark" onClick={handleSubmit} disabled={isPending || !form.title || !form.start_date || !form.end_date}>
+            {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+            {isPending ? "Creating…" : "Create Event"}
           </Button>
         )}
       </div>
