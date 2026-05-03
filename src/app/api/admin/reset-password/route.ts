@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+async function requireAdminAuth() {
+  const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return null;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) return null;
+
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/user_roles?user_id=eq.${user.id}&select=role`,
+    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+  );
+  if (!res.ok) return null;
+  const roles = (await res.json()) as Array<{ role: string }>;
+  const allowed = ['super_admin', 'admin'];
+  return roles.some((r) => allowed.includes(r.role)) ? user : null;
+}
+
 export async function POST(req: NextRequest) {
   try {
+    const caller = await requireAdminAuth();
+    if (!caller) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const { userId, newPassword } = await req.json();
 
     if (!userId || !newPassword) {
